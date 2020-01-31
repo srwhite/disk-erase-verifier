@@ -2,6 +2,7 @@
 
 import codecs
 import csv
+import json
 import os
 import random
 import subprocess
@@ -9,9 +10,14 @@ import shutil
 import string
 import time
 
-def human_size(bytes, units=[' bytes','KB','MB','GB','TB', 'PB', 'EB']):
-    """ Returns a human readable string reprentation of bytes"""
-    return str(bytes) + units[0] if bytes < 1024 else human_size(bytes>>10, units[1:])
+def human_size(n, units=[' bytes','KB','MB','GB','TB', 'PB', 'EB']):
+    """ Returns a human readable string reprentation of n"""
+    if n < 900:
+        return str(n) + units[0]
+    elif (n < 10240) and (n % 1024 != 0):
+        return "%.2f%s" % (n / 1024.0, units[1])
+    else:
+        return human_size(n>>10, units[1:])
 
 def open_disk(drive):
     return open(drive, "rb")
@@ -37,7 +43,19 @@ def get_drives():
             drives.append(row["DeviceID"])
             DRIVE_INFO_CACHE[row["DeviceID"]] = row
 
-    # if os.name == "posix" ...
+    if os.name == "posix":
+        # On Linux we could read /dev/disk/by-id ourselves. But this is easier.
+        p = subprocess.run(["lsblk", "--json", "--output-all"], stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+        for d in json.loads(p.stdout.decode("utf-8")).get("blockdevices", []):
+            if d.get("type", "") == "loop":
+                continue
+            dev = "/dev/%s" % (d["kname"],)
+            drives.append(dev)
+            DRIVE_INFO_CACHE[dev] = d
+            # Make the data match Windows a bit
+            # Don't copy "size" to "Size" though, as it isn't precise enough
+            d["SerialNumber"] = d["serial"]
+            d["Model"] = d["model"]
 
     return drives
 
@@ -51,7 +69,7 @@ def get_info(drive, key, f):
 
 def get_size(drive):
     def internal_get_size(drive):
-        with open_drive(drive) as d:
+        with open_disk(drive) as d:
             return d.seek(0, 2)
     return int(get_info(drive, "Size", internal_get_size))
 
@@ -76,10 +94,10 @@ def check_blocks(d, pattern, start, count, checked, timeout = None, mincount = N
         d.seek(pos * len(pattern), 0)
         got = d.read(len(pattern))
         if got != pattern:
-            if len(got) != len(pattern):
-                print("DEBUG: short read of %s bytes at %s" % (len(got), pos * len(pattern)))
-            else:
-                print("DEBUG: got %s, expected %s" % (format_pattern(got), format_pattern(pattern)))
+            #if len(got) != len(pattern):
+            #    print("DEBUG: short read of %s bytes at %s" % (len(got), pos * len(pattern)))
+            #else:
+            #    print("DEBUG: got %s, expected %s" % (format_pattern(got), format_pattern(pattern)))
             return pos
 
         checked.add(pos)
@@ -131,7 +149,7 @@ def is_erased(drive):
             diff = check_blocks(d, pattern, block, 1, checked)
 
         if diff is not None:
-            return "No, bytes starting at %s of %s don't match first" % (diff * len(pattern), len(pattern))
+            return "No, %s block number %s doesn't match start of disk" % (human_size(len(pattern)), diff)
 
         return "Yes, checked %s (%.02f%%) including first %s. Pattern: %s" % (human_size(len(checked) * len(pattern)), (len(checked) * 100.0) / blocks, human_size(checked_start * len(pattern)), format_pattern(pattern))
     except Exception as e:
