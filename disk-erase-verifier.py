@@ -12,6 +12,8 @@ import time
 
 def human_size(n, units=[' bytes','KB','MB','GB','TB', 'PB', 'EB']):
     """ Returns a human readable string reprentation of n"""
+    if n is None:
+        return None
     if n < 900:
         return str(n) + units[0]
     elif (n < 10240) and (n % 1024 != 0):
@@ -71,7 +73,10 @@ def get_size(drive):
     def internal_get_size(drive):
         with open_disk(drive) as d:
             return d.seek(0, 2)
-    return int(get_info(drive, "Size", internal_get_size))
+    try:
+        return int(get_info(drive, "Size", internal_get_size))
+    except:
+        return None
 
 def format_pattern(pattern):
     for i in [1, 2, 4, 8, 16]:
