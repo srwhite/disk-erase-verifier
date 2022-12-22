@@ -1,5 +1,6 @@
 #!/usr/bin/python3
 
+import argparse
 import codecs
 import csv
 import json
@@ -8,6 +9,7 @@ import random
 import subprocess
 import shutil
 import string
+import sys
 import time
 
 def human_size(n, units=[' bytes','KB','MB','GB','TB', 'PB', 'EB']):
@@ -154,18 +156,38 @@ def is_erased(drive):
             diff = check_blocks(d, pattern, block, 1, checked)
 
         if diff is not None:
-            return "No, %s block number %s doesn't match start of disk" % (human_size(len(pattern)), diff)
+            return (False, "No, %s block number %s doesn't match start of disk" % (human_size(len(pattern)), diff))
 
-        return "Yes, checked %s (%.02f%%) including first %s. Pattern: %s" % (human_size(len(checked) * len(pattern)), (len(checked) * 100.0) / blocks, human_size(checked_start * len(pattern)), format_pattern(pattern))
+        return (True, "Yes, checked %s (%.02f%%) including first %s. Pattern: %s" % (human_size(len(checked) * len(pattern)), (len(checked) * 100.0) / blocks, human_size(checked_start * len(pattern)), format_pattern(pattern)))
     except Exception as e:
-        return "ERROR: %s" % (e,)
+        return (False, "ERROR: %s" % (e,))
+
+
+parser = argparse.ArgumentParser(
+                    prog = 'disk-erase-verifier.py',
+                    description = 'Verifies that disks do not contain data',
+                    epilog = '')
+parser.add_argument('--json', action='store_true', help="output JSON data")
+args = parser.parse_args()
 
 drives = get_drives()
 
-for drive in drives:
-    print("Drive %s: %s" % (drive, get_info(drive, "Model", lambda d: "?")))
-    print("  Serial: %s" % (get_info(drive, "SerialNumber", lambda d: "?"),))
-    print("  Capacity: %s" % (human_size(get_size(drive)),))
-    print("  Erased: " + is_erased(drive))
-    print()
+output_data = {}
 
+for drive in drives:
+    drive_meta = {"model":  get_info(drive, "Model", lambda d: "?"),
+                  "serial": get_info(drive, "SerialNumber", lambda d: "?"),
+                  "capacity": get_size(drive)}
+    if not args.json:
+        print("Drive %s: %s" % (drive, drive_meta["model"]))
+        print("  Serial: %s" % (drive_meta["serial"],))
+        print("  Capacity: %s" % (human_size(drive_meta["capacity"]),))
+    drive_checks = {}
+    drive_checks["erased"] = is_erased(drive)
+    if not args.json:
+        print("  Erased: " + drive_checks["erased"][1])
+        print()
+    output_data[drive] = {"metadata": drive_meta, "checks": drive_checks}
+
+if args.json:
+    json.dump(output_data, sys.stdout)
