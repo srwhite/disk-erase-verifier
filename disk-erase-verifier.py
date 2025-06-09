@@ -3,6 +3,7 @@
 import argparse
 import codecs
 import csv
+import datetime
 import json
 import os
 import random
@@ -174,10 +175,17 @@ drives = get_drives()
 
 output_data = {}
 
+print("Disk erase verifier run at " + str(datetime.datetime.now()))
+print()
+
+# On Linux add dmidecode | grep -A 4 "^System Information"
+
 for drive in drives:
     drive_meta = {"model":  get_info(drive, "Model", lambda d: "?"),
                   "serial": get_info(drive, "SerialNumber", lambda d: "?"),
                   "capacity": get_size(drive)}
+    if drive_meta["capacity"] == 0:
+        continue
     if not args.json:
         print("Drive %s: %s" % (drive, drive_meta["model"]))
         print("  Serial: %s" % (drive_meta["serial"],))
